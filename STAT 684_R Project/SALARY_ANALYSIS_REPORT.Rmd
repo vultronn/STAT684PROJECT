@@ -1,0 +1,844 @@
+---
+title: |
+  | \vspace{5cm} Salary Analysis
+author: "Paul Victor"
+date: "12/3/2019"
+output:
+  pdf_document: default
+  html_document:
+    df_print: paged
+editor_options:
+  chunk_output_type: console
+---
+
+```{r functions, include=F}
+### Dummy Variable gen
+dumvar <- function(col, col_nm){
+  ### Generates dummy variables and drops the one level/column that 
+  ### has the fewest number of occurances.
+  #
+  ### Args
+  #   col = dataframe of column(s) to convert do dummy variables 
+  #   col_nm = Original name of columns
+  #
+  ### Output 
+  #   Dataframe of dummy variables with new names.
+  
+  dummy1 <- dummy.code(col) %>% as.data.frame
+  colnames(dummy1) <- paste0("I.", col_nm, '.', colnames(dummy1))
+  com_set <- unique(col)
+  com_set <- paste0("I.", col_nm, '.', com_set)
+  min_com_set <- apply(select(dummy1, com_set), 2, sum) %>% which.min %>% names
+  
+  if (length(com_set) == 2) {
+    colnm <- names(dummy1)[-which(names(dummy1)==min_com_set)]
+    dummy1 <- dummy1[, -which(names(dummy1) == min_com_set)]
+    dummy1 <- data.frame(dummy1)
+    colnames(dummy1) <- colnm
+  } else {
+    dummy1 <- dummy1[,-grep(min_com_set, colnames(dummy1), fixed = T)]
+  }
+
+  return(dummy1)
+}
+
+
+
+### Collinearity/Correlation
+col_cor <- function(df, p = 0.75){
+  ### Calculates correlation of all columns.
+  ### Filters to only column relationships with a correlation >= 0.75
+  #
+  ### Args
+  #   df = Dataframe of columns to test correlation
+  #   p = % of correlation (R2) to filter to
+  #
+  ### Output
+  #   Dataframe of pairs of columns & their correlation
+  
+  cor_col <- df %>%
+  cor() %>%
+  melt %>%
+  filter(abs(value) > p & Var1 != Var2) %>%
+  arrange(value)
+
+  ### Concatenate and sort Var1 & Var2 to later remove any duplicates
+  cor_col$concat <- paste(cor_col$Var1, cor_col$Var2)
+  cor_col$concat <- sapply(lapply(strsplit(cor_col[,4], " "), sort),paste,collapse = " ")
+  
+  cor_col <- cor_col[duplicated(cor_col$concat) == F, ]
+  
+  cor_col <- cor_col[,-4]
+  return(cor_col)
+}
+
+
+
+### Partition Data into Train, Validation, & Test
+part_data <- function(df, col, dc = c(""), tr = 0.6, va = 0.2, te = 0.2, dummy = F){
+    ### This function partitions your df into train, test & validation.
+    ### It also will apply a row index column for future reference.
+    #
+    ### Args
+    #   df = Dataframe of response & predictors
+    #   col = Columns to include in model
+    #   dc = Column to Drop
+    #   tr = % training data partition
+    #   va = % validation data partition
+    #   te = % test data partition
+    #######################################################################
+    ### Function to Parittion train, validatin, test
+    g = function(df, spec, seed){
+      set.seed(seed)
+      sample(cut(
+      seq(nrow(df)),
+      nrow(df)*cumsum(c(0,spec)),
+      labels = names(spec)
+      ))}
+  
+    ctrl <- trainControl(method = "repeatedcv", number = 10, repeats = 10)
+    spec = c(train = tr, test = va, validate = te)
+    stoch_spec <- c(train = tr, validate = te + va)
+
+    # drop_col <- c('a1_spey_d_perc')
+    drop_col <- dc
+    # df_19_a1_km3 <- cbind(dfy19ea1$TOTAL_PASS_PERC, df_19_a1_km3)
+    # colnames(df_19_a1_km3)[1] <- 'TOTAL_PASS_PERC'
+
+    if (dummy){
+      rf_col = c(col, 
+                 dummy_var,
+                 'index')
+    } else{
+      rf_col = c(col, 
+                 'index')
+    }
+    # rf_col = c(tested_cols_perc, 'index')
+    df$index = as.integer(row.names(df))
+    res = split(df[,rf_col], g(df, spec, 1))
+
+    ### Define data
+    train_df <- res$train
+    train_i <- train_df$index
+    # train_df <- select(train_df, -index)
+    val_df <- res$validate
+    val_i <- val_df$index
+    # val_df <- select(val_df, -index)
+    test_df <- res$test
+    test_i <- test_df$index
+    # test_df <- select(test_df, -index)
+
+    return(list(train_df, val_df, test_df))
+}
+
+### Execute powerTransform through all columns
+transf <- function(df){
+  # Calculates BoxCox lambda value
+  #
+  ### Args
+  #   df = data frame of columns (No Negatives)
+  # 
+  ### Output
+  #   df = dataframe with lambda value for each column
+  
+  trans <- lapply(df, function(x) powerTransform(x + .001)$lambda) %>% unlist
+  names(trans) <- gsub('\\..*', '', names(trans))
+  return(trans)
+}
+```
+
+```{r libraries/settings, include=F}
+options(scipen = 9999)
+library(knitr)
+knitr::opts_chunk$set(warning = FALSE, message = FALSE, tidy.opts=list(width.cutoff=60),tidy=TRUE)
+library(dplyr)
+library(ggplot2)
+library(gridExtra)
+library(stringr)
+library(psych)
+library(data.table)
+library(caret)
+library(car)
+library(parallel)
+library(doParallel)
+library(DataExplorer)
+library(flextable)
+library(kableExtra)
+library(papeR)
+```
+
+\fontfamily{cmr}
+\fontsize{12}{22}
+\selectfont
+\setlength\parindent{24pt}
+
+\pagebreak
+
+
+\color{blue}
+
+# \textbf{Layout}
+
+\color{black}
+
+\textbf{I. Research Goals \& Objectives}  
+\textbf{II. Data Collection}  
+\textbf{III. Statistical Methods}  
+\textbf{IV. Statistical Analysis}  
+\textbf{V. Summary \& Interpretation}  
+
+
+\pagebreak
+
+
+
+# Research Goals & Objectives 
+
+The data provided for this retrospective observational study came from an arbitrary company containing data attributes about employees and their salaries.  The dataset contained 474 observations that represented a unque individual and 10 attributes ranging from employeeID to salary.  This research is a small study that discusses what drives current salary.  One factor that is highly discussed in 2019 is whether men are paid more than women.  A goal for this study is to see if we are able to bring any light onto this discussion as well as provide a predictive model that companies could apply to predicting next years total capital for base salary compensation.  There are no preconceived notions or biases prior to the study, so we are able to assume there are no hidden assumptions outside of the data provided.  The target population for the study is all employees to be reviewed by management.  
+
+
+# Data Collection
+
+The process used to collect the data is unknown, but is used in this observational study since it is assumed to be collected prior to the study.  From the initial head view of the data it apears to be well structured.
+
+```{r read_data, echo = FALSE}
+nb <- read.csv('..//..//NewBankData.csv')
+```
+
+```{r, echo = FALSE}
+kable(head(nb)) %>% 
+  kable_styling(latex_options = 'scale_down')
+```
+
+\pagebreak
+
+Within the study the key response variable is current salary that is provided for all of the employees and has the distrobution of...
+
+```{r, echo = FALSE, fig.align = 'center', fig.width = 4, fig.height = 4}
+boxplot(nb$currentsalary, xlab = 'Current Salary', main = 'Current Salary')
+```
+
+
+# Data Collection  
+The study is retrospective in that the data was collected historically and we are now looking back at the results.  I do not know how the data was collected, but I will assume it was collected for all employees at the same time within a single company.  The dataset's response variable is the Current Salary at the time of the data collection that will be used in the modeling efforts.  
+
+## Data Exploration Analysis
+
+When doing a simple statistical summary analysis of the data we see some interesting results.
+<li>1. There is a, -1 value for experience.</li>
+2. traineeprogram has a 'o' instead of a 0 for an employee.
+
+### Numerical Summary
+```{r, echo = FALSE, results = 'asis', fig.align = 'center'}
+kable(summarise(nb, type = 'numeric')) %>% 
+  kable_styling(latex_options = 'scale_down')
+```
+
+### Categorical Summary 
+```{r, echo = F,  results = 'asis', fig.align = 'center'}
+kable(summarise(nb, type = 'factor')) %>%
+kable_styling(position = "center")
+```
+
+From the data description it appears that , '-1' is used when there is missing data.  That means there is an employee with a missing experience datapoint.  In regards to the 'o' instead of 0 for traineeprogram I will assume that it was a typo and should be a 0.  
+
+\pagebreak
+
+We also want to look at the correlation between predictors which we see in the figure below.  The diagonal cells show the distribution of the predictors where the top of the correlation matrix shows the cross plot with the bottom of the matrix showing the correlation value.  When looking at these plots we are trying to identify any multicollinearity that is occring.  Multicollinearity is when two variables have a high positive or negative correlation.  This can cause an issue for certain weaker learning models like Linear Regression (OLS) that are biased to multicollinearity.  
+
+From the plot below we can also see the distribution of the variables.  It is easy to see that the majority of them have some type of skew to their distribution.  The skewness is important to keep in mind as certain models perform better when variables are normalized.  Normalization can be accomplished by transformations to the data that will be discussed later..
+
+```{r, include = FALSE}
+nb$index <- seq_len(nrow(nb))
+
+nb$traineeprogram <- str_replace_all(nb$traineeprogram, 'O', '0') %>% as.integer()
+```
+
+```{r, echo = F, fig.width = 8, fig.height = 8}
+# Customize upper panel
+upper.panel<-function(x, y){
+  points(x,y, pch = 19, cex = .2)
+}
+# Correlation panel
+panel.cor <- function(x, y){
+    usr <- par("usr"); on.exit(par(usr))
+    par(usr = c(0, 1, 0, 1))
+    r <- round(cor(x, y), digits=2)
+    txt <- paste0("R = ", r)
+    cex.cor <- 0.8/strwidth(txt)
+    text(0.5, 0.5, txt, cex = cex.cor * r)
+}
+## put histograms on the diagonal
+panel.hist <- function(x, ...)
+{
+    usr <- par("usr"); on.exit(par(usr))
+    par(usr = c(usr[1:2], 0, 1.5) )
+    h <- hist(x, plot = FALSE)
+    breaks <- h$breaks; nB <- length(breaks)
+    y <- h$counts; y <- y/max(y)
+    rect(breaks[-nB], 0, breaks[-1], y, col = "cyan", ...)
+}
+pairs(currentsalary ~ age + sex + education + experience + seniority + jobcategory + traineeprogram + startingsalary, data = nb, lower.panel = panel.cor, upper.panel = upper.panel, diag.panel = panel.hist)
+```
+
+
+```{r include=FALSE}
+nb$index <- seq_len(nrow(nb))
+
+nb$traineeprogram <- str_replace_all(nb$traineeprogram, 'O', '0') %>% as.integer()
+```
+
+```{r include = FALSE}
+### Drop one bad row of missing experience data point.
+nb <- nb[nb$experience != -1, ]
+```
+
+
+### Handling Missing Data  
+As stated before the data has some missing values that are specified using, '-1' as well as a typo in the traineeprogram predictor.  Other than these two datapoints the data is complete.  In regards to the type in traneeprogram I am going to replace the 'o' with a 0.  However, with the '-1' missing value in the predictor experience there are some options I have when handling missing data.  Some common methods I like to use are...
+
+\begin{enumerate}
+\item Delete row with missing value.
+\item Impute missing value with...
+  \begin{enumerate}
+  \item Mean of column.
+  \item Algorithm imputation. (i.e. K-Nearest Neighbor)
+  \end{enumerate}
+\end{enumerate}
+
+Since there is only one row with missing data I will just drop that one employee.  
+
+### Relational Plots
+Before I get into the multivariate analysis I would like to run some 1 to 2 dimensional analysis.  Below are some plots and notes for the plots.  
+
+\vspace{4mm}
+
+```{r eval=FALSE, include=FALSE}
+ggplot(nb, aes(x = currentsalary)) + 
+  geom_histogram(color = 'black', fill = 'lightblue', bins = 30) +
+  labs(x = 'Current Salary', y = 'Frequency') +
+  ggtitle('Current Salary Distribution') +
+  theme(plot.title = element_text(hjust = 0.5, face = 'bold'),
+        axis.title.x = element_text(face = 'bold'),
+        axis.title.y = element_text(face = 'bold'))
+
+g1 <- ggplot(nb, aes(x = education)) + 
+  geom_histogram(color = 'black', fill = 'lightblue', bins = 30) +
+  labs(x = 'Education', y = 'Frequency') +
+  ggtitle('Education Distribution') +
+  theme(plot.title = element_text(hjust = 0.5, face = 'bold'),
+        axis.title.x = element_text(face = 'bold'),
+        axis.title.y = element_text(face = 'bold'))
+
+g2 <- ggplot(nb, aes(x = experience)) + 
+  geom_histogram(color = 'black', fill = 'lightblue', bins = 30) +
+  labs(x = 'Experience', y = 'Frequency') +
+  ggtitle('Experience Distribution') +
+  theme(plot.title = element_text(hjust = 0.5, face = 'bold'),
+        axis.title.x = element_text(face = 'bold'),
+        axis.title.y = element_text(face = 'bold'))
+
+g3 <- ggplot(nb, aes(x = seniority)) + 
+  geom_histogram(color = 'black', fill = 'lightblue', bins = 30) +
+  labs(x = 'Seniority', y = 'Frequency') +
+  ggtitle('Seniority Distribution') +
+  theme(plot.title = element_text(hjust = 0.5, face = 'bold'),
+        axis.title.x = element_text(face = 'bold'),
+        axis.title.y = element_text(face = 'bold'))
+
+g4 <- ggplot(nb, aes(x = startingsalary)) + 
+  geom_histogram(color = 'black', fill = 'lightblue', bins = 30) +
+  labs(x = 'Starting Salary', y = 'Frequency') +
+  ggtitle('Starting Salary Distribution') +
+  theme(plot.title = element_text(hjust = 0.5, face = 'bold'),
+        axis.title.x = element_text(face = 'bold'),
+        axis.title.y = element_text(face = 'bold'))
+
+grid.arrange(g1,g2,g3, g4, nrow = 2)
+  
+```
+
+```{r echo=FALSE, out.width = '60%', fig.align = 'center'}
+ggplot(nb) +
+  geom_boxplot(aes(x = jobcategory, y = startingsalary, fill = jobcategory)) +
+  ggtitle('Job Cateogry vs. Starting Salary') +
+  theme(plot.title = element_text(hjust = 0.5, face = 'bold'))
+```
+
+```{r echo = F, out.width = '60%', fig.align = 'center'}
+ggplot(nb) +
+  geom_boxplot(aes(x = jobcategory, y = currentsalary, fill = jobcategory)) +
+  ggtitle('Job Cateogry vs. Current Salary') +
+  theme(plot.title = element_text(hjust = 0.5, face = 'bold'))
+```
+
+```{r echo = F, out.width = '60%', fig.align = 'center'}
+ggplot(nb) +
+  geom_boxplot(aes(x = jobcategory, y = (currentsalary - startingsalary), fill = jobcategory)) +
+  ggtitle('Job Cateogry vs. Delta Salary') +
+  theme(plot.title = element_text(hjust = 0.5, face = 'bold'))
+```
+
+```{r echo = F, out.width = '60%', fig.align = 'center'}
+### Plot experience by Job Cateogry
+ggplot(nb, aes(x = jobcategory, y = experience, fill = jobcategory)) +
+  geom_boxplot()  +
+  ggtitle('Job Cateogry vs. Experience') +
+  theme(plot.title = element_text(hjust = 0.5, face = 'bold'))
+```
+
+```{r echo = F, out.width = '60%', fig.align = 'center'}
+ggplot(nb, aes(x = jobcategory, y = education, fill = jobcategory)) +
+  geom_boxplot()  +
+  ggtitle('Job Cateogry vs. Education') +
+  theme(plot.title = element_text(hjust = 0.5, face = 'bold'))
+
+```
+
+Majority of Admin, Security, & Tellers have no more than 14 years of education (No more than Associates Degree).
+
+```{r echo = F, out.width = '60%', fig.align = 'center'}
+ggplot(nb, aes(x = sex, y = currentsalary, fill = jobcategory)) +
+  geom_boxplot()  +
+  ggtitle('Sex vs. Job Category') +
+  theme(plot.title = element_text(hjust = 0.5, face = 'bold'))
+
+```
+  
+I find this plot very interesting in that it sh ows there there are no females in management and security.  Management is one of the highest paid job categories and within this company it is saturated by men.  Then when you compare 
+
+```{r  echo = F, out.width = '60%', fig.align = 'center'}
+g1 <- ggplot(nb) +
+  geom_boxplot(aes(x = sex, y = startingsalary, fill = sex)) +
+  ggtitle('Sex vs. Starting Salary') +
+  theme(plot.title = element_text(hjust = 0.5, face = 'bold'))
+
+g2 <- ggplot(nb) +
+  geom_boxplot(aes(x = sex, y = currentsalary, fill = sex)) +
+  ggtitle('Sex vs. Current Salary') +
+  theme(plot.title = element_text(hjust = 0.5, face = 'bold'))
+
+
+g3 <- ggplot(nb) +
+  geom_boxplot(aes(x = sex, y = (currentsalary - startingsalary)/sd(currentsalary - startingsalary), fill = sex)) +
+  ggtitle('Sex vs. Delta Salary') +
+  theme(plot.title = element_text(hjust = 0.5, face = 'bold'))
+
+grid.arrange(g1,g2,g3, nrow = 1)
+```
+
+We see here that on average men do make more money than females.  Also, it appears that men earn more of an increase from starting to current after normalizing to the standard deviation of the difference.  
+
+```{r echo = F, out.width = '60%', fig.align = 'center'}
+### Plot experience by Job Cateogry
+ggplot(nb, aes(x = sex, y = experience, fill = sex)) +
+  geom_boxplot()  +
+  ggtitle('Gender vs. Experience') +
+  theme(plot.title = element_text(hjust = 0.5, face = 'bold'))
+```
+
+Even though men make more money than women they seem to have similar experience.
+
+```{r echo = F, out.width = '60%', fig.align = 'center'}
+ggplot(nb, aes(x = sex, y = education, fill = jobcategory)) +
+  geom_boxplot()  +
+  ggtitle('Gender vs. Education') +
+  theme(plot.title = element_text(hjust = 0.5, face = 'bold'))
+
+```
+
+Majority of Females have no more than 14 years of education (No more than Associates Degree).  I do find this plot very interesting in that it shows that majority of males within the company have more than an assocites degree where females primarily have at most an associates degree.  Since most men have more education than woman we can assume this as a reason for why men are making more within the company.
+
+```{r echo = F, out.width = '50%', fig.align = 'center'}
+ggplot(nb[c(nb$jobcategory != "Management" & nb$jobcategory != 'Security'),], aes(x = jobcategory, y = education, fill = sex)) +
+  geom_bar(stat = "identity", position = position_dodge()) +
+  ggtitle('Job Category vs. Education vs. Sex') +
+  theme(plot.title = element_text(hjust = 0.5, face = 'bold'))
+ggplot(nb[c(nb$jobcategory != "Management" & nb$jobcategory != 'Security'),], aes(x = jobcategory, y = seniority, fill = sex)) +
+  geom_bar(stat = "identity", position = position_dodge())  +
+  ggtitle('Job Category vs. Seniority vs. Sex') +
+  theme(plot.title = element_text(hjust = 0.5, face = 'bold'))
+ggplot(nb[c(nb$jobcategory != "Management" & nb$jobcategory != 'Security'),], aes(x = jobcategory, y = experience, fill = sex)) +
+  geom_bar(stat = "identity", position = position_dodge())  +
+  ggtitle('Job Category vs. Experience vs. Sex') +
+  theme(plot.title = element_text(hjust = 0.5, face = 'bold'))
+ggplot(nb[c(nb$jobcategory != "Management" & nb$jobcategory != 'Security'),], aes(x = jobcategory, y = currentsalary, fill = sex)) +
+  geom_bar(stat = "identity", position = position_dodge())  +
+  ggtitle('Job Category vs. Current Salary vs. Sex') +
+  theme(plot.title = element_text(hjust = 0.5, face = 'bold'))
+
+```
+
+When comparing the same job category by sex we see that even within the same position on average men have more education.  Again, this is can be a reason why men are making more than females.
+
+One thing that is interesting within the company is the Admin jobcategory.  It appears men and women have similar education & seniority, but women have more experience within the position, but still make less than men.
+
+## Education vs. Job Category
+```{r fig.width = 10, fig.asp = 0.55, fig.align = 'center'}
+lbl = with(nb[nb$education <= 16,], paste0(jobcategory, sex))
+
+g1 <- ggplot(filter(nb, education <= 16), aes(x = as.character(education), y = startingsalary, fill = lbl, label = lbl)) +
+  geom_boxplot() + 
+  labs(x = 'education') 
+g2 <- ggplot(filter(nb, education <= 16), aes(x = as.character(education), y = currentsalary, fill = lbl, label = lbl)) +
+  geom_boxplot() + 
+  labs(x = 'education')
+g3 <- ggplot(filter(nb, education <= 16), aes(x = as.character(education), fill = lbl)) +
+  geom_histogram(stat = 'count', position = position_dodge()) + 
+  labs(x = 'education')
+# ggplot(filter(nb, education <= 16), aes(x = as.character(education), fill = lbl)) +
+#   geom_violin(stat = 'count', position = position_dodge())
+
+g1
+g2
+g3
+```
+
+# Feature Engineer
+```{r}
+nb <- nb %>% 
+  mutate(salaryincrease = currentsalary - startingsalary)
+```
+
+
+## Correlation Analysis
+```{r}
+cor_tbl <- col_cor(select(nb, -employeeID, -sex, -jobcategory))
+
+# Customize upper panel
+upper.panel<-function(x, y){
+  points(x,y, pch = 19)
+}
+# Correlation panel
+panel.cor <- function(x, y){
+    usr <- par("usr"); on.exit(par(usr))
+    par(usr = c(0, 1, 0, 1))
+    r <- round(cor(x, y), digits=2)
+    txt <- paste0("R = ", r)
+    cex.cor <- 0.8/strwidth(txt)
+    text(0.5, 0.5, txt, cex = cex.cor * r)
+}
+## put histograms on the diagonal
+panel.hist <- function(x, ...)
+{
+    usr <- par("usr"); on.exit(par(usr))
+    par(usr = c(usr[1:2], 0, 1.5) )
+    h <- hist(x, plot = FALSE)
+    breaks <- h$breaks; nB <- length(breaks)
+    y <- h$counts; y <- y/max(y)
+    rect(breaks[-nB], 0, breaks[-1], y, col = "cyan", ...)
+}
+pairs(currentsalary ~ age + sex + education + experience + seniority + jobcategory + traineeprogram + startingsalary, data = nb, lower.panel = panel.cor, upper.panel = upper.panel, diag.panel = panel.hist)
+```
+
+Age & experience have a high correlation.  I dropped age as I was more interested in experience no matter what age you entered the company.
+
+## Dummy Variables
+```{r}
+ogdumv <- c('jobcategory', 'sex', 'traineeprogram')
+dum1 <- dumvar(nb$jobcategory, 'jobcategory')
+dum2 <- dumvar(nb$sex, 'sex')
+dum3 <- dumvar(nb$traineeprogram, 'traineeprogram')
+
+dumall <- cbind(dum1, dum2, dum3)
+dummy_var <- colnames(dumall)
+
+nb <- nb %>% 
+  select(-ogdumv)
+
+nb <- cbind(nb, dumall)
+
+nbmc <- nb %>% 
+  select(-age)
+```
+
+
+# Modeling Prep
+```{r include=FALSE}
+### Drop row with missing value from experience
+nbmc <- nbmc %>% 
+  filter(experience != -1)
+
+allvar <- c("education", "age","experience", "seniority", "I.jobcategory.Admin", 
+"I.jobcategory.Executive", "I.jobcategory.IT", "I.jobcategory.Management", 
+"I.jobcategory.Security", "I.jobcategory.Teller", "I.sex.M", 
+"I.traineeprogram.1")
+
+mlvar <- c("education", "experience", "seniority", "I.jobcategory.Admin", 
+"I.jobcategory.Executive", "I.jobcategory.IT", "I.jobcategory.Management", 
+"I.jobcategory.Security", "I.jobcategory.Teller", "I.sex.M", 
+"I.traineeprogram.1")
+
+mlvary_nm <- 'currentsalary'
+mlvary <- nbmc$currentsalary
+```
+
+## Transformations
+```{r}
+df_trans <- transf(nbmc[, c('currentsalary', 'startingsalary','education', 'experience', 'seniority')])
+df_trans
+```
+
+### Plot Transformation
+```{r}
+ggplot(nb, aes(x = log(currentsalary))) + 
+  geom_histogram(color = 'black', fill = 'lightblue', bins = 30) +
+  labs(x = 'Log Current Salary', y = 'Frequency') +
+  ggtitle('Log Current Salary Distribution') +
+  theme(plot.title = element_text(hjust = 0.5, face = 'bold'),
+        axis.title.x = element_text(face = 'bold'),
+        axis.title.y = element_text(face = 'bold'))
+```
+
+
+# Partition Data
+```{r}
+pd <- nbmc %>% 
+  select(-employeeID)
+
+df_l <- part_data(pd, c(mlvary_nm, mlvar))
+train_df_mc <- df_l[[1]]
+val_df_mc <- df_l[[2]]
+test_df_mc <- df_l[[3]]
+
+
+df_l <- part_data(nb, c(mlvary_nm, allvar))
+train_df <- df_l[[1]]
+val_df <- df_l[[2]]
+test_df <- df_l[[3]]
+```
+
+## OLS
+```{r}
+m1_lm_all <- lm(log(currentsalary) ~ (. - index)^2 , train_df_mc)
+
+n <- length(m1_lm_all$residuals)
+m1_lm <- step(m1_lm_all, direction = "backward", data = train_df_mc, k=log(n), trace = 0)
+
+postResample(exp(predict(m1_lm)), train_df_mc$currentsalary)
+```
+
+### OLS Test
+```{r}
+100/nrow(test_df_mc) * sum(abs((test_df_mc$currentsalary - exp(predict(m1_lm, test_df_mc)))/test_df_mc$currentsalary))
+1/nrow(test_df_mc) * sum(abs((test_df_mc$currentsalary-exp(predict(m1_lm, test_df_mc)))))
+
+
+actual_df <- data.frame(val = test_df_mc$currentsalary, type = "actual", index = test_df_mc$index)
+pred_df <- data.frame(val = exp(predict(m1_lm, test_df_mc)), type = "test", index = "0")
+mast_df <- rbind(actual_df, pred_df)
+mast_df$OBS <- rep(seq(1,nrow(actual_df)), 2)
+mast_df <- merge(mast_df,nb, by = c('index'), all.x = TRUE)
+mast_df <- mast_df %>% 
+  group_by(OBS) %>% 
+  mutate(MAPE = 100*(abs(val[type == "actual"]-val[type=="test"]))/(val[type=="actual"]),
+         ACTUAL = val[type == 'actual'],
+         PREDICT = val[type == 'test']) %>% 
+  dplyr::ungroup() %>% 
+  as.data.frame
+
+mast_df <- arrange(mast_df, type, val, OBS)
+order_x <- mast_df$OBS
+order_x <- factor(order_x, levels = unique(order_x))
+
+lbl <- paste(mast_df$dname, round(mast_df$MAPE,2), sep = "\n")
+
+### Residual Plot
+ggplot(mast_df)+
+  geom_line(aes(group = OBS, x = as.factor(order_x), y = val), alpha = 0.2, size = 1.1) +
+  geom_point(aes(x = as.factor(order_x), y = val, col = type, label = lbl), size = 2.5) +
+  ggtitle("Test Resdiual Plot - OLS") +
+  theme(plot.title = element_text(hjust = 0.5, face = 'bold'),
+        axis.text.x=element_blank(),
+        axis.ticks.x = element_blank())+
+  scale_y_continuous(labels=function(x) format(x, big.mark = ",", scientific = FALSE)) +
+  ylab("Current Salary") +
+  xlab("Index")
+
+```
+
+## Elastic Net
+```{r}
+m1_lm_all <- lm(log(currentsalary) ~ ., train_df_mc)
+
+n <- length(m1_lm_all$residuals)
+m1_lm <- step(m1_lm_all, direction = "backward", data = train_df_mc, k=log(n), trace = 0)
+
+postResample(exp(predict(m1_lm)), train_df_mc$currentsalary)
+```
+### Elastic Net Test
+```{r}
+100/nrow(test_df_mc) * sum(abs((test_df_mc$currentsalary - exp(predict(m1_lm, test_df_mc)))/test_df_mc$currentsalary))
+1/nrow(test_df_mc) * sum(abs((test_df_mc$currentsalary-exp(predict(m1_lm, test_df_mc)))))
+
+
+actual_df <- data.frame(val = test_df_mc$currentsalary, type = "actual", index = test_df_mc$index)
+pred_df <- data.frame(val = exp(predict(m1_lm, test_df_mc)), type = "test", index = "0")
+mast_df <- rbind(actual_df, pred_df)
+mast_df$OBS <- rep(seq(1,nrow(actual_df)), 2)
+mast_df <- merge(mast_df,nb, by = c('index'), all.x = TRUE)
+mast_df <- mast_df %>% 
+  group_by(OBS) %>% 
+  mutate(MAPE = 100*(abs(val[type == "actual"]-val[type=="test"]))/(val[type=="actual"]),
+         ACTUAL = val[type == 'actual'],
+         PREDICT = val[type == 'test']) %>% 
+  dplyr::ungroup() %>% 
+  as.data.frame
+
+mast_df <- arrange(mast_df, type, val, OBS)
+order_x <- mast_df$OBS
+order_x <- factor(order_x, levels = unique(order_x))
+
+lbl <- paste(mast_df$dname, round(mast_df$MAPE,2), sep = "\n")
+
+### Residual Plot
+ggplot(mast_df)+
+  geom_line(aes(group = OBS, x = as.factor(order_x), y = val), alpha = 0.2, size = 1.1) +
+  geom_point(aes(x = as.factor(order_x), y = val, col = type, label = lbl), size = 2.5) +
+  ggtitle("Test Resdiual Plot - OLS") +
+  theme(plot.title = element_text(hjust = 0.5, face = 'bold'),
+        axis.text.x=element_blank(),
+        axis.ticks.x = element_blank())+
+  scale_y_continuous(labels=function(x) format(x, big.mark = ",", scientific = FALSE)) +
+  ylab("Current Salary") +
+  xlab("Index")
+
+```
+
+## Random Forest
+```{r eval=FALSE, include=FALSE}
+ctrl <- trainControl(method = "repeatedcv", number = 10, repeats = 10)
+
+cluster <- makeCluster(detectCores() - 1) # convention to leave 1 core for OS
+registerDoParallel(cluster)
+m1_rf <- train(log(currentsalary) ~ . - index,
+          data = train_df,
+          method = 'rf',
+          metric = 'MAE',
+          trControl = ctrl,
+          preProcess = c('center', 'scale', "BoxCox"),
+          importance = T,
+          tuneLength = 5L)
+stopCluster(cluster)
+
+rf_pred <- exp(predict(m1_rf, val_df))
+
+100/nrow(val_df) * sum(abs((val_df$currentsalary-rf_pred)/val_df$currentsalary))
+1/nrow(val_df)*sum(abs((val_df$currentsalary - rf_pred)))
+
+postResample(rf_pred, val_df$currentsalary)
+plot(val_df$currentsalary, rf_pred)
+
+```
+### Random Forest Test
+```{r eval=FALSE, include=FALSE}
+100/nrow(test_df) * sum(abs((test_df$currentsalary - exp(predict(m1_rf, test_df)))/test_df$currentsalary))
+1/nrow(test_df) * sum(abs((test_df$currentsalary-exp(predict(m1_rf, test_df)))))
+
+rf_test_pred <- predict(m1_rf, test_df)
+postResample(rf_test_pred, test_df$currentsalary)
+
+actual_df <- data.frame(val = test_df$currentsalary, type = "actual", index = test_df$index)
+pred_df <- data.frame(val = exp(predict(m1_rf, test_df)), type = "test", index = "0")
+mast_df <- rbind(actual_df, pred_df)
+mast_df$OBS <- rep(seq(1,nrow(actual_df)), 2)
+mast_df <- merge(mast_df,nb, by = c('index'), all.x = TRUE)
+mast_df <- mast_df %>% 
+  group_by(OBS) %>% 
+  mutate(MAPE = 100*(abs(val[type == "actual"]-val[type=="test"]))/(val[type=="actual"]),
+         ACTUAL = val[type == 'actual'],
+         PREDICT = val[type == 'test']) %>% 
+  dplyr::ungroup() %>% 
+  as.data.frame
+
+mast_df <- arrange(mast_df, type, val, OBS)
+order_x <- mast_df$OBS
+order_x <- factor(order_x, levels = unique(order_x))
+
+lbl <- paste(mast_df$employeeID, round(mast_df$MAPE,2), sep = "\n")
+
+### Residual Plot
+ggplot(mast_df)+
+  geom_line(aes(group = OBS, x = as.factor(order_x), y = val), alpha = 0.2, size = 1.1) +
+  geom_point(aes(x = as.factor(order_x), y = val, col = type, label = lbl), size = 2.5) +
+  ggtitle("Test Resdiual Plot - RF") +
+  theme(plot.title = element_text(hjust = 0.5, face = 'bold'),
+        axis.text.x=element_blank(),
+        axis.ticks.x = element_blank())+
+  scale_y_continuous(labels=function(x) format(x, big.mark = ",", scientific = FALSE)) +
+  ylab("Current Salary") +
+  xlab("Index")
+
+```
+
+## XGBoost
+```{r eval=FALSE, include=FALSE}
+ctrl <- trainControl(method = "repeatedcv", number = 10, repeats = 10)
+
+cluster <- makeCluster(detectCores() - 1) # convention to leave 1 core for OS
+registerDoParallel(cluster)
+m1_xgb <- train(log(currentsalary) ~ . - index,
+          data = train_df,
+          method = 'xgbTree',
+          metric = 'MAE',
+          trControl = ctrl,
+          preProcess = c('center', 'scale', "BoxCox"),
+          importance = T,
+          tuneLength = 5L)
+stopCluster(cluster)
+
+rf_pred <- exp(predict(m1_xgb, val_df))
+
+100/nrow(val_df) * sum(abs((val_df$currentsalary-rf_pred)/val_df$currentsalary))
+1/nrow(val_df)*sum(abs((val_df$currentsalary - rf_pred)))
+
+postResample(rf_pred, val_df$currentsalary)
+plot(val_df$currentsalary, rf_pred)
+
+```
+
+### XGBoost Test
+```{r eval=FALSE, include=FALSE}
+100/nrow(test_df) * sum(abs((test_df$currentsalary - exp(predict(m1_xgb, test_df)))/test_df$currentsalary))
+1/nrow(test_df) * sum(abs((test_df$currentsalary-exp(predict(m1_xgb, test_df)))))
+
+rf_test_pred <- predict(m1_xgb, test_df)
+postResample(rf_test_pred, test_df$currentsalary)
+
+actual_df <- data.frame(val = test_df$currentsalary, type = "actual", index = test_df$index)
+pred_df <- data.frame(val = exp(predict(m1_xgb, test_df)), type = "test", index = "0")
+mast_df <- rbind(actual_df, pred_df)
+mast_df$OBS <- rep(seq(1,nrow(actual_df)), 2)
+mast_df <- merge(mast_df,nb, by = c('index'), all.x = TRUE)
+mast_df <- mast_df %>% 
+  group_by(OBS) %>% 
+  mutate(MAPE = 100*(abs(val[type == "actual"]-val[type=="test"]))/(val[type=="actual"]),
+         ACTUAL = val[type == 'actual'],
+         PREDICT = val[type == 'test']) %>% 
+  dplyr::ungroup() %>% 
+  as.data.frame
+
+mast_df <- arrange(mast_df, type, val, OBS)
+order_x <- mast_df$OBS
+order_x <- factor(order_x, levels = unique(order_x))
+
+lbl <- paste(mast_df$type, mast_df$OBS, mast_df$employeeID, round(mast_df$MAPE,2), sep = "\n")
+
+### Residual Plot
+ggplot(mast_df) +
+  geom_line(aes(group = OBS, x = as.factor(order_x), y = val), alpha = 0.2, size = 1.1) +
+  geom_point(aes(x = as.factor(order_x), y = val, col = type, label = lbl), size = 2.5) +
+  ggtitle("Test Resdiual Plot - RF") +
+  theme(plot.title = element_text(hjust = 0.5, face = 'bold'),
+        axis.text.x=element_blank(),
+        axis.ticks.x = element_blank())+
+  scale_y_continuous(labels=function(x) format(x, big.mark = ",", scientific = FALSE)) +
+  ylab("Current Salary") +
+  xlab("Index")
+
+ggplot(filter(mast_df, type == 'actual')) +
+  geom_point(aes(x = as.factor(order_x[1:(length(order_x)/2)]), y = (PREDICT - ACTUAL), label = lbl[1:(length(lbl)/2)], color = education)) +
+  geom_abline(intercept = 0) +
+  scale_color_gradient2(colours = terrain.colors(10))
+
+```
