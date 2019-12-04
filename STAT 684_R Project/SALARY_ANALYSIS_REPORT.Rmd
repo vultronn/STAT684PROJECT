@@ -202,7 +202,8 @@ The data provided for this retrospective observational study came from an arbitr
 The process used to collect the data is unknown, but is used in this observational study since it is assumed to be collected prior to the study.  From the initial head view of the data it apears to be well structured.
 
 ```{r read_data, echo = FALSE}
-nb <- read.csv('..//..//NewBankData.csv')
+# nb <- read.csv('..//..//NewBankData.csv')
+nb <- read.csv('C:\\Users\\pdvic\\Google Drive\\__Grad School - TAMU\\_STAT 684 - PROF INTERNSHIP\\STAT 684_R Project\\Data\\NewBankData.csv')
 ```
 
 ```{r, echo = FALSE}
@@ -242,8 +243,6 @@ kable_styling(position = "center")
 
 From the data description it appears that , '-1' is used when there is missing data.  That means there is an employee with a missing experience datapoint.  In regards to the 'o' instead of 0 for traineeprogram I will assume that it was a typo and should be a 0.  
 
-\pagebreak
-
 We also want to look at the correlation between predictors which we see in the figure below.  The diagonal cells show the distribution of the predictors where the top of the correlation matrix shows the cross plot with the bottom of the matrix showing the correlation value.  When looking at these plots we are trying to identify any multicollinearity that is occring.  Multicollinearity is when two variables have a high positive or negative correlation.  This can cause an issue for certain weaker learning models like Linear Regression (OLS) that are biased to multicollinearity.  
 
 From the plot below we can also see the distribution of the variables.  It is easy to see that the majority of them have some type of skew to their distribution.  The skewness is important to keep in mind as certain models perform better when variables are normalized.  Normalization can be accomplished by transformations to the data that will be discussed later..
@@ -254,7 +253,7 @@ nb$index <- seq_len(nrow(nb))
 nb$traineeprogram <- str_replace_all(nb$traineeprogram, 'O', '0') %>% as.integer()
 ```
 
-```{r, echo = F, fig.width = 8, fig.height = 8}
+```{r, echo = F, fig.align = 'center'}
 # Customize upper panel
 upper.panel<-function(x, y){
   points(x,y, pch = 19, cex = .2)
@@ -265,7 +264,7 @@ panel.cor <- function(x, y){
     par(usr = c(0, 1, 0, 1))
     r <- round(cor(x, y), digits=2)
     txt <- paste0("R = ", r)
-    cex.cor <- 0.8/strwidth(txt)
+    cex.cor <- 0.7/strwidth(txt)
     text(0.5, 0.5, txt, cex = cex.cor * r)
 }
 ## put histograms on the diagonal
@@ -281,6 +280,7 @@ panel.hist <- function(x, ...)
 pairs(currentsalary ~ age + sex + education + experience + seniority + jobcategory + traineeprogram + startingsalary, data = nb, lower.panel = panel.cor, upper.panel = upper.panel, diag.panel = panel.hist)
 ```
 
+When looking at this plot I see that Age & experience have a high correlation.  When I'm using a model that is influenced by multicollinearity, OLS, I dropped age as I was more interested in experience no matter what age you entered the company.
 
 ```{r include=FALSE}
 nb$index <- seq_len(nrow(nb))
@@ -405,9 +405,9 @@ ggplot(nb, aes(x = sex, y = currentsalary, fill = jobcategory)) +
 
 ```
   
-I find this plot very interesting in that it sh ows there there are no females in management and security.  Management is one of the highest paid job categories and within this company it is saturated by men.  Then when you compare 
+I find this plot very interesting in that it shows there there are no females in management and security.  Management is one of the highest paid job categories and within this company it is saturated by men.  
 
-```{r  echo = F, out.width = '60%', fig.align = 'center'}
+```{r  echo = F, out.width = '70%', fig.align = 'center'}
 g1 <- ggplot(nb) +
   geom_boxplot(aes(x = sex, y = startingsalary, fill = sex)) +
   ggtitle('Sex vs. Starting Salary') +
@@ -424,7 +424,9 @@ g3 <- ggplot(nb) +
   ggtitle('Sex vs. Delta Salary') +
   theme(plot.title = element_text(hjust = 0.5, face = 'bold'))
 
-grid.arrange(g1,g2,g3, nrow = 1)
+g1
+g2
+g3
 ```
 
 We see here that on average men do make more money than females.  Also, it appears that men earn more of an increase from starting to current after normalizing to the standard deviation of the difference.  
@@ -449,32 +451,37 @@ ggplot(nb, aes(x = sex, y = education, fill = jobcategory)) +
 
 Majority of Females have no more than 14 years of education (No more than Associates Degree).  I do find this plot very interesting in that it shows that majority of males within the company have more than an assocites degree where females primarily have at most an associates degree.  Since most men have more education than woman we can assume this as a reason for why men are making more within the company.
 
-```{r echo = F, out.width = '50%', fig.align = 'center'}
-ggplot(nb[c(nb$jobcategory != "Management" & nb$jobcategory != 'Security'),], aes(x = jobcategory, y = education, fill = sex)) +
+```{r echo = F, out.width = '90%', fig.align = 'center'}
+g1 <- ggplot(nb[c(nb$jobcategory != "Management" & nb$jobcategory != 'Security'),], aes(x = jobcategory, y = education, fill = sex)) +
   geom_bar(stat = "identity", position = position_dodge()) +
   ggtitle('Job Category vs. Education vs. Sex') +
-  theme(plot.title = element_text(hjust = 0.5, face = 'bold'))
-ggplot(nb[c(nb$jobcategory != "Management" & nb$jobcategory != 'Security'),], aes(x = jobcategory, y = seniority, fill = sex)) +
+  theme(plot.title = element_text(hjust = 0.5, face = 'bold', size = 10),
+        axis.text = element_text(size = 5))
+g2 <- ggplot(nb[c(nb$jobcategory != "Management" & nb$jobcategory != 'Security'),], aes(x = jobcategory, y = seniority, fill = sex)) +
   geom_bar(stat = "identity", position = position_dodge())  +
   ggtitle('Job Category vs. Seniority vs. Sex') +
-  theme(plot.title = element_text(hjust = 0.5, face = 'bold'))
-ggplot(nb[c(nb$jobcategory != "Management" & nb$jobcategory != 'Security'),], aes(x = jobcategory, y = experience, fill = sex)) +
+  theme(plot.title = element_text(hjust = 0.5, face = 'bold', size = 10),
+        axis.text = element_text(size = 5))
+g3 <- ggplot(nb[c(nb$jobcategory != "Management" & nb$jobcategory != 'Security'),], aes(x = jobcategory, y = experience, fill = sex)) +
   geom_bar(stat = "identity", position = position_dodge())  +
   ggtitle('Job Category vs. Experience vs. Sex') +
-  theme(plot.title = element_text(hjust = 0.5, face = 'bold'))
-ggplot(nb[c(nb$jobcategory != "Management" & nb$jobcategory != 'Security'),], aes(x = jobcategory, y = currentsalary, fill = sex)) +
+  theme(plot.title = element_text(hjust = 0.5, face = 'bold', size = 10),
+        axis.text = element_text(size = 5))
+g4 <- ggplot(nb[c(nb$jobcategory != "Management" & nb$jobcategory != 'Security'),], aes(x = jobcategory, y = currentsalary, fill = sex)) +
   geom_bar(stat = "identity", position = position_dodge())  +
   ggtitle('Job Category vs. Current Salary vs. Sex') +
-  theme(plot.title = element_text(hjust = 0.5, face = 'bold'))
+  theme(plot.title = element_text(hjust = 0.5, face = 'bold', size = 10),
+        axis.text = element_text(size = 5))
+
+grid.arrange(g1,g2,g3,g4, nrow = 2)
 
 ```
 
 When comparing the same job category by sex we see that even within the same position on average men have more education.  Again, this is can be a reason why men are making more than females.
 
-One thing that is interesting within the company is the Admin jobcategory.  It appears men and women have similar education & seniority, but women have more experience within the position, but still make less than men.
+One thing that is interesting within the company is the Admin jobcategory.  It appears men and women have similar education & seniority, but women have more experience within the position, but still make less than men.  This is something that could be investigated in a later research.  
 
-## Education vs. Job Category
-```{r fig.width = 10, fig.asp = 0.55, fig.align = 'center'}
+```{r include = F, fig.width = 10, fig.asp = 0.55, fig.align = 'center'}
 lbl = with(nb[nb$education <= 16,], paste0(jobcategory, sex))
 
 g1 <- ggplot(filter(nb, education <= 16), aes(x = as.character(education), y = startingsalary, fill = lbl, label = lbl)) +
@@ -495,46 +502,23 @@ g3
 ```
 
 # Feature Engineer
-```{r}
+
+When running a model study one may need to develope new predictors from the current data.  This is called feature engineering.  With the few predictors in the data one feature I engineered is, 'salaryincrease' which is the amount of increase from starting salary to current salary.
+
+\begin{center}
+currentsalary - startingsalary = salaryincrease
+\end{center}
+
+```{r echo = F}
 nb <- nb %>% 
   mutate(salaryincrease = currentsalary - startingsalary)
 ```
 
-
-## Correlation Analysis
-```{r}
-cor_tbl <- col_cor(select(nb, -employeeID, -sex, -jobcategory))
-
-# Customize upper panel
-upper.panel<-function(x, y){
-  points(x,y, pch = 19)
-}
-# Correlation panel
-panel.cor <- function(x, y){
-    usr <- par("usr"); on.exit(par(usr))
-    par(usr = c(0, 1, 0, 1))
-    r <- round(cor(x, y), digits=2)
-    txt <- paste0("R = ", r)
-    cex.cor <- 0.8/strwidth(txt)
-    text(0.5, 0.5, txt, cex = cex.cor * r)
-}
-## put histograms on the diagonal
-panel.hist <- function(x, ...)
-{
-    usr <- par("usr"); on.exit(par(usr))
-    par(usr = c(usr[1:2], 0, 1.5) )
-    h <- hist(x, plot = FALSE)
-    breaks <- h$breaks; nB <- length(breaks)
-    y <- h$counts; y <- y/max(y)
-    rect(breaks[-nB], 0, breaks[-1], y, col = "cyan", ...)
-}
-pairs(currentsalary ~ age + sex + education + experience + seniority + jobcategory + traineeprogram + startingsalary, data = nb, lower.panel = panel.cor, upper.panel = upper.panel, diag.panel = panel.hist)
-```
-
-Age & experience have a high correlation.  I dropped age as I was more interested in experience no matter what age you entered the company.
-
 ## Dummy Variables
-```{r}
+
+To allow certain models to handle categorical data I will convert the predictors to dummy variables.  The process of converting to dummy variables is called one-hot coding.  This takes each predictor and creates a column for each level in the predictor.  To avoid errors in the model I dropped the dummy variable column for each categorical predictor that had the least number of occurences for features.
+
+```{r echo = F, out.width = '70%', fig.align = 'center'}
 ogdumv <- c('jobcategory', 'sex', 'traineeprogram')
 dum1 <- dumvar(nb$jobcategory, 'jobcategory')
 dum2 <- dumvar(nb$sex, 'sex')
@@ -550,10 +534,13 @@ nb <- cbind(nb, dumall)
 
 nbmc <- nb %>% 
   select(-age)
+
+kable(head(nb)) %>%
+  kable_styling(position = "center")
 ```
 
 
-# Modeling Prep
+# Modeling Prep  
 ```{r include=FALSE}
 ### Drop row with missing value from experience
 nbmc <- nbmc %>% 
@@ -574,25 +561,60 @@ mlvary <- nbmc$currentsalary
 ```
 
 ## Transformations
-```{r}
+
+When using predictors that are not normally distributed models are able to provide biased inaccurate results.  With this in mind I used the algorithm Box-Cox to calculate a lambda value that represents the exponential value that will convert the predictor's distribution to a more normal distribution.  Below is a table showing the possible different type of transformations...
+
+\begin{table}[h]
+\centering
+\begin{tabular}{c|c}
+\hline
+Lambda & Transformation  \\
+\hline
+0 & log  \\
+2 & Square  \\ 
+-1/3 & Negative Cubic  \\
+\hline
+\end{tabular}
+\end{table}
+
+
+```{r echo = F}
 df_trans <- transf(nbmc[, c('currentsalary', 'startingsalary','education', 'experience', 'seniority')])
 df_trans
 ```
 
 ### Plot Transformation
-```{r}
-ggplot(nb, aes(x = log(currentsalary))) + 
+
+From the image below we can see what the transformation can do to the distribution of a predictor.  It takes the right skewed current salary distributions and transforms it into a much more normalized symmetric distribution.  
+
+```{r echo = F}
+g1 <- ggplot(nb, aes(x = currentsalary)) + 
+  geom_histogram(color = 'black', fill = 'lightblue', bins = 30) +
+  labs(x = 'Current Salary', y = 'Frequency') +
+  ggtitle('Current Salary Distribution') +
+  theme(plot.title = element_text(hjust = 0.5, face = 'bold'),
+        axis.title.x = element_text(face = 'bold'),
+        axis.title.y = element_text(face = 'bold'))
+
+g2 <- ggplot(nb, aes(x = log(currentsalary))) + 
   geom_histogram(color = 'black', fill = 'lightblue', bins = 30) +
   labs(x = 'Log Current Salary', y = 'Frequency') +
   ggtitle('Log Current Salary Distribution') +
   theme(plot.title = element_text(hjust = 0.5, face = 'bold'),
         axis.title.x = element_text(face = 'bold'),
         axis.title.y = element_text(face = 'bold'))
+
+grid.arrange(g1,g2, nrow = 2)
 ```
 
 
-# Partition Data
-```{r}
+# Partition Data  
+
+When developing a model the most important thing to consider is how to confirm if the model is accurate or not.  This can be done by testing the model against a random subset of datapoints that the model was not trained on.  We get these datasets by partitioning the dataset into three different groups, 1. train, 2. validation, and 3. test.  The split between the data is 60-20-20 which means the Training dataset is 60% of the master data and then Validation and Test are 20%.  
+
+In the modeling process I will train the model on the training dataset then confirm the models accuracy on the validation dataset.  If the accuracy is not acceptable I will circle back to the training dataset and re-evaluate the modeling process then compare to the validation dataset again.  However, if the accuracy is acceptable I will confirm the model against the test dataset.  Ideally, the accuracy will be similar amongst the different datasets and the model can then be productionized into the company.    
+
+```{r echo = F}
 pd <- nbmc %>% 
   select(-employeeID)
 
@@ -608,15 +630,24 @@ val_df <- df_l[[2]]
 test_df <- df_l[[3]]
 ```
 
-## OLS
-```{r}
-m1_lm_all <- lm(log(currentsalary) ~ (. - index)^2 , train_df_mc)
+## Linear Regression (OLS)  
 
+Linear Regression is an algorithm that calculates the optimum linear trend between all predictors and the response variable.  One thing I've done to make the model more robust is included interactions.  Interactions, when found to be statistically signifiant, represent a different relationship between a predictor and the response when another predictor changes.  
+
+### OLS Variable Selection  
+By including interactions I've increased my number of predictors, so to optimize the predictors used in the model I implemented a backward variable selection (BVS) process using Bayesian Information Criterion (BIC) to measure the level of accuracy.  To implement the BVS I started by fitting a linear regression with all predictors and interactions.  Then, ran that model of 67 predictors through backward variable selection and ended up with only 7 predictors.
+
+```{r echo = F}
+m1_lm_all <- lm(log(currentsalary) ~ (. - index)^2 , train_df_mc)
+2
 n <- length(m1_lm_all$residuals)
 m1_lm <- step(m1_lm_all, direction = "backward", data = train_df_mc, k=log(n), trace = 0)
 
-postResample(exp(predict(m1_lm)), train_df_mc$currentsalary)
+summary(m1_lm)
 ```
+
+Accuracy: `r postResample(exp(predict(m1_lm)), train_df_mc$currentsalary)`
+
 
 ### OLS Test
 ```{r}
