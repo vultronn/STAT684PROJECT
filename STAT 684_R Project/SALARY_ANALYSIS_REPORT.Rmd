@@ -183,8 +183,8 @@ library(papeR)
 
 \textbf{I. Research Goals \& Objectives}  
 \textbf{II. Data Collection}  
-\textbf{III. Statistical Methods}  
-\textbf{IV. Statistical Analysis}  
+\textbf{III. Statistical Analysis}  
+\textbf{IV. Statistical Methods}  
 \textbf{V. Summary \& Interpretation}  
 
 
@@ -202,11 +202,13 @@ The data provided for this retrospective observational study came from an arbitr
 The process used to collect the data is unknown, but is used in this observational study since it is assumed to be collected prior to the study.  From the initial head view of the data it apears to be well structured.
 
 ```{r read_data, echo = FALSE}
-# nb <- read.csv('..//..//NewBankData.csv')
-nb <- read.csv('C:\\Users\\pdvic\\Google Drive\\__Grad School - TAMU\\_STAT 684 - PROF INTERNSHIP\\STAT 684_R Project\\Data\\NewBankData.csv')
+### Work
+nb <- read.csv('..//..//NewBankData.csv')
+### Home
+# nb <- read.csv('C:\\Users\\pdvic\\Google Drive\\__Grad School - TAMU\\_STAT 684 - PROF INTERNSHIP\\STAT 684_R Project\\Data\\NewBankData.csv')
 ```
 
-```{r, echo = FALSE}
+```{r echo = FALSE}
 kable(head(nb)) %>% 
   kable_styling(latex_options = 'scale_down')
 ```
@@ -215,12 +217,12 @@ kable(head(nb)) %>%
 
 Within the study the key response variable is current salary that is provided for all of the employees and has the distrobution of...
 
-```{r, echo = FALSE, fig.align = 'center', fig.width = 4, fig.height = 4}
+```{r echo = FALSE, fig.align = 'center', fig.width = 4, fig.height = 4}
 boxplot(nb$currentsalary, xlab = 'Current Salary', main = 'Current Salary')
 ```
 
 
-# Data Collection  
+# Statistical Analysis
 The study is retrospective in that the data was collected historically and we are now looking back at the results.  I do not know how the data was collected, but I will assume it was collected for all employees at the same time within a single company.  The dataset's response variable is the Current Salary at the time of the data collection that will be used in the modeling efforts.  
 
 ## Data Exploration Analysis
@@ -230,13 +232,13 @@ When doing a simple statistical summary analysis of the data we see some interes
 2. traineeprogram has a 'o' instead of a 0 for an employee.
 
 ### Numerical Summary
-```{r, echo = FALSE, results = 'asis', fig.align = 'center'}
+```{r echo = FALSE, results = 'asis', fig.align = 'center'}
 kable(summarise(nb, type = 'numeric')) %>% 
   kable_styling(latex_options = 'scale_down')
 ```
 
 ### Categorical Summary 
-```{r, echo = F,  results = 'asis', fig.align = 'center'}
+```{r echo = F,  results = 'asis', fig.align = 'center'}
 kable(summarise(nb, type = 'factor')) %>%
 kable_styling(position = "center")
 ```
@@ -247,13 +249,13 @@ We also want to look at the correlation between predictors which we see in the f
 
 From the plot below we can also see the distribution of the variables.  It is easy to see that the majority of them have some type of skew to their distribution.  The skewness is important to keep in mind as certain models perform better when variables are normalized.  Normalization can be accomplished by transformations to the data that will be discussed later..
 
-```{r, include = FALSE}
+```{r include = FALSE}
 nb$index <- seq_len(nrow(nb))
 
 nb$traineeprogram <- str_replace_all(nb$traineeprogram, 'O', '0') %>% as.integer()
 ```
 
-```{r, echo = F, fig.align = 'center'}
+```{r echo = F, fig.align = 'center'}
 # Customize upper panel
 upper.panel<-function(x, y){
   points(x,y, pch = 19, cex = .2)
@@ -577,10 +579,20 @@ Lambda & Transformation  \\
 \end{tabular}
 \end{table}
 
+\begin{table}[h]
+\centering
+\begin{tabular}{c|c|c|c|c}
+\hline
+currentsalary & startingsalary & education & experience & seniority \\
+\hline
+ 0.1313436 & -0.2789184 & -2.2298500 & 0.2985255 & 0.6981652 \\
+\hline
+\end{tabular}
+\end{table}
 
-```{r echo = F}
+```{r include = F, echo = F}
 df_trans <- transf(nbmc[, c('currentsalary', 'startingsalary','education', 'experience', 'seniority')])
-df_trans
+# df_trans
 ```
 
 ### Plot Transformation
@@ -630,29 +642,126 @@ val_df <- df_l[[2]]
 test_df <- df_l[[3]]
 ```
 
+# Statistical Methods
+
 ## Linear Regression (OLS)  
 
 Linear Regression is an algorithm that calculates the optimum linear trend between all predictors and the response variable.  One thing I've done to make the model more robust is included interactions.  Interactions, when found to be statistically signifiant, represent a different relationship between a predictor and the response when another predictor changes.  
 
 ### OLS Variable Selection  
-By including interactions I've increased my number of predictors, so to optimize the predictors used in the model I implemented a backward variable selection (BVS) process using Bayesian Information Criterion (BIC) to measure the level of accuracy.  To implement the BVS I started by fitting a linear regression with all predictors and interactions.  Then, ran that model of 67 predictors through backward variable selection and ended up with only 7 predictors.
+By including interactions I've increased my number of predictors, so to optimize the predictors used in the model I implemented a backward variable selection (BVS) process using Bayesian Information Criterion (BIC) to measure the level of accuracy.  To implement the BVS I started by fitting a linear regression with all predictors and interactions.  Then, ran that model of 67 predictors through backward variable selection and ended up with only 6 predictors plus intercept.
 
 ```{r echo = F}
 m1_lm_all <- lm(log(currentsalary) ~ (. - index)^2 , train_df_mc)
-2
+
 n <- length(m1_lm_all$residuals)
 m1_lm <- step(m1_lm_all, direction = "backward", data = train_df_mc, k=log(n), trace = 0)
 
-summary(m1_lm)
+x <- summary(m1_lm)
+x <- x$coefficients
+x[,4] <- round(x[,4], 4)
+x <- as.data.frame(x)
+
+kable(x) %>%
+  kable_styling(position = "center")
 ```
 
-Accuracy: `r postResample(exp(predict(m1_lm)), train_df_mc$currentsalary)`
+### Statistical Summary  
+From the summary we see that the predictors that are left are all statistically significant due to the p-value being less than 0.05.  We can interpret these results by looking at the Estimate column.  Those values after taking the exponent of them, because we took the log of the response, will give us the unit increase or decrease of the currentsalary for each predictor when all other predictors are kept equal.  
 
+### Accuracy Plots
+The plots used throughout the paper to visualize accuracy are scatterplots that have two points for each x-value.  Red - Actual Data from the dataset and Blue - Predicted value for the corresponding x-value.  I also sorted the actual datapoints to allow me to see if there were any trends for underperformers vs. overperformers.  
+
+### OLS Train
+```{r echo = F, out.width = '70%', fig.align = 'center'}
+# 100/nrow(test_df_mc) * sum(abs((test_df_mc$currentsalary - exp(predict(m1_lm, test_df_mc)))/test_df_mc$currentsalary))
+# 1/nrow(test_df_mc) * sum(abs((test_df_mc$currentsalary-exp(predict(m1_lm, test_df_mc)))))
+
+
+actual_df <- data.frame(val = train_df_mc$currentsalary, type = "actual", index = train_df_mc$index)
+pred_df <- data.frame(val = exp(predict(m1_lm, train_df_mc)), type = "train", index = "0")
+mast_df <- rbind(actual_df, pred_df)
+mast_df$OBS <- rep(seq(1,nrow(actual_df)), 2)
+mast_df <- merge(mast_df,nb, by = c('index'), all.x = TRUE)
+mast_df <- mast_df %>% 
+  group_by(OBS) %>% 
+  mutate(MAPE = 100*(abs(val[type == "actual"]-val[type=="train"]))/(val[type=="actual"]),
+         ACTUAL = val[type == 'actual'],
+         PREDICT = val[type == 'train']) %>% 
+  dplyr::ungroup() %>% 
+  as.data.frame
+
+mast_df <- arrange(mast_df, type, val, OBS)
+order_x <- mast_df$OBS
+order_x <- factor(order_x, levels = unique(order_x))
+
+lbl <- paste(mast_df$dname, round(mast_df$MAPE,2), sep = "\n")
+
+### Residual Plot
+ggplot(mast_df)+
+  geom_line(aes(group = OBS, x = as.factor(order_x), y = val), alpha = 0.2, size = 1.1) +
+  geom_point(aes(x = as.factor(order_x), y = val, col = type, label = lbl), size = 2.5) +
+  ggtitle("Train Resdiual Plot - OLS") +
+  theme(plot.title = element_text(hjust = 0.5, face = 'bold'),
+        axis.text.x=element_blank(),
+        axis.ticks.x = element_blank())+
+  scale_y_continuous(labels=function(x) format(x, big.mark = ",", scientific = FALSE)) +
+  ylab("Current Salary") +
+  xlab("Index")
+
+```
+
+\textbf{Accuracy on Train Data:}  
+\(R^2\): `r round(postResample(exp(predict(m1_lm, train_df_mc)), train_df_mc$currentsalary)[2], 2)`  
+\(MSE\): `r round(postResample(exp(predict(m1_lm, train_df_mc)), train_df_mc$currentsalary)[3], 2)` 
+
+### OLS Validation
+```{r echo = F, out.width = '70%', fig.align = 'center'}
+# 100/nrow(test_df_mc) * sum(abs((test_df_mc$currentsalary - exp(predict(m1_lm, test_df_mc)))/test_df_mc$currentsalary))
+# 1/nrow(test_df_mc) * sum(abs((test_df_mc$currentsalary-exp(predict(m1_lm, test_df_mc)))))
+
+
+actual_df <- data.frame(val = val_df_mc$currentsalary, type = "actual", index = val_df_mc$index)
+pred_df <- data.frame(val = exp(predict(m1_lm, val_df_mc)), type = "validation", index = "0")
+mast_df <- rbind(actual_df, pred_df)
+mast_df$OBS <- rep(seq(1,nrow(actual_df)), 2)
+mast_df <- merge(mast_df,nb, by = c('index'), all.x = TRUE)
+mast_df <- mast_df %>% 
+  group_by(OBS) %>% 
+  mutate(MAPE = 100*(abs(val[type == "actual"]-val[type=="validation"]))/(val[type=="actual"]),
+         ACTUAL = val[type == 'actual'],
+         PREDICT = val[type == 'validation']) %>% 
+  dplyr::ungroup() %>% 
+  as.data.frame
+
+mast_df <- arrange(mast_df, type, val, OBS)
+order_x <- mast_df$OBS
+order_x <- factor(order_x, levels = unique(order_x))
+
+lbl <- paste(mast_df$employeeID, round(mast_df$MAPE,2), sep = "\n")
+
+### Residual Plot
+ggplot(mast_df)+
+  geom_line(aes(group = OBS, x = as.factor(order_x), y = val), alpha = 0.2, size = 1.1) +
+  geom_point(aes(x = as.factor(order_x), y = val, col = type, label = lbl), size = 2.5) +
+  ggtitle("Validation Resdiual Plot - OLS") +
+  theme(plot.title = element_text(hjust = 0.5, face = 'bold'),
+        axis.text.x=element_blank(),
+        axis.ticks.x = element_blank())+
+  scale_y_continuous(labels=function(x) format(x, big.mark = ",", scientific = FALSE)) +
+  ylab("Current Salary") +
+  xlab("Index")
+
+```
+
+\textbf{Accuracy on Validation Data:}  
+\(R^2\): `r round(postResample(exp(predict(m1_lm, val_df_mc)), val_df_mc$currentsalary)[2], 2)`  
+\(MSE\): `r round(postResample(exp(predict(m1_lm, val_df_mc)), val_df_mc$currentsalary)[3], 2)`  
 
 ### OLS Test
-```{r}
-100/nrow(test_df_mc) * sum(abs((test_df_mc$currentsalary - exp(predict(m1_lm, test_df_mc)))/test_df_mc$currentsalary))
-1/nrow(test_df_mc) * sum(abs((test_df_mc$currentsalary-exp(predict(m1_lm, test_df_mc)))))
+```{r echo = F, out.width = '70%', fig.align = 'center'}
+# 100/nrow(test_df_mc) * sum(abs((test_df_mc$currentsalary - exp(predict(m1_lm, test_df_mc)))/test_df_mc$currentsalary))
+# 1/nrow(test_df_mc) * sum(abs((test_df_mc$currentsalary-exp(predict(m1_lm, test_df_mc)))))
 
 
 actual_df <- data.frame(val = test_df_mc$currentsalary, type = "actual", index = test_df_mc$index)
@@ -688,8 +797,13 @@ ggplot(mast_df)+
 
 ```
 
-## Elastic Net
-```{r}
+\textbf{Accuracy on Test Data:}  
+\(R^2\): `r round(postResample(exp(predict(m1_lm, test_df_mc)), test_df_mc$currentsalary)[2], 2)`  
+\(MSE\): `r round(postResample(exp(predict(m1_lm, test_df_mc)), test_df_mc$currentsalary)[3], 2)`  
+
+From these three plots we see that the model is pretty accurate amongst the different datasets.  There do seem to appear to be some outliers in the validation dataset.  Let's see if a more robust model can handle these outliers better than an OLS.
+
+```{r Elastic Net, include = F, echo = F}
 m1_lm_all <- lm(log(currentsalary) ~ ., train_df_mc)
 
 n <- length(m1_lm_all$residuals)
@@ -697,10 +811,10 @@ m1_lm <- step(m1_lm_all, direction = "backward", data = train_df_mc, k=log(n), t
 
 postResample(exp(predict(m1_lm)), train_df_mc$currentsalary)
 ```
-### Elastic Net Test
-```{r}
-100/nrow(test_df_mc) * sum(abs((test_df_mc$currentsalary - exp(predict(m1_lm, test_df_mc)))/test_df_mc$currentsalary))
-1/nrow(test_df_mc) * sum(abs((test_df_mc$currentsalary-exp(predict(m1_lm, test_df_mc)))))
+
+```{r Elastic Net Test, include = F, echo = F}
+# 100/nrow(test_df_mc) * sum(abs((test_df_mc$currentsalary - exp(predict(m1_lm, test_df_mc)))/test_df_mc$currentsalary))
+# 1/nrow(test_df_mc) * sum(abs((test_df_mc$currentsalary-exp(predict(m1_lm, test_df_mc)))))
 
 
 actual_df <- data.frame(val = test_df_mc$currentsalary, type = "actual", index = test_df_mc$index)
@@ -737,7 +851,10 @@ ggplot(mast_df)+
 ```
 
 ## Random Forest
-```{r eval=FALSE, include=FALSE}
+
+Another model I ran was a Random Forest that is an ensemble learning method for classification, regression and other tasks that can be constructed by a multitude of decision trees at training time.  This algorithm is much more robust than OLS & I assume it to be more accurate.
+
+```{r echo=FALSE, out.width = '70%', fig.align = 'center'}
 ctrl <- trainControl(method = "repeatedcv", number = 10, repeats = 10)
 
 cluster <- makeCluster(detectCores() - 1) # convention to leave 1 core for OS
@@ -754,20 +871,111 @@ stopCluster(cluster)
 
 rf_pred <- exp(predict(m1_rf, val_df))
 
-100/nrow(val_df) * sum(abs((val_df$currentsalary-rf_pred)/val_df$currentsalary))
-1/nrow(val_df)*sum(abs((val_df$currentsalary - rf_pred)))
-
-postResample(rf_pred, val_df$currentsalary)
-plot(val_df$currentsalary, rf_pred)
+# 100/nrow(val_df) * sum(abs((val_df$currentsalary-rf_pred)/val_df$currentsalary))
+# 1/nrow(val_df)*sum(abs((val_df$currentsalary - rf_pred)))
+# 
+# postResample(rf_pred, val_df$currentsalary)
+# plot(val_df$currentsalary, rf_pred)
 
 ```
+
+### Random Forest Train
+```{r echo=FALSE, out.width = '70%', fig.align = 'center'}
+# 100/nrow(test_df) * sum(abs((test_df$currentsalary - exp(predict(m1_rf, test_df)))/test_df$currentsalary))
+# 1/nrow(test_df) * sum(abs((test_df$currentsalary-exp(predict(m1_rf, test_df)))))
+
+rf_test_pred <- predict(m1_rf, train_df)
+# postResample(rf_test_pred, train_df$currentsalary)
+
+actual_df <- data.frame(val = train_df$currentsalary, type = "actual", index = train_df$index)
+pred_df <- data.frame(val = exp(predict(m1_rf, train_df)), type = "train", index = "0")
+mast_df <- rbind(actual_df, pred_df)
+mast_df$OBS <- rep(seq(1,nrow(actual_df)), 2)
+mast_df <- merge(mast_df,nb, by = c('index'), all.x = TRUE)
+mast_df <- mast_df %>% 
+  group_by(OBS) %>% 
+  mutate(MAPE = 100*(abs(val[type == "actual"]-val[type=="train"]))/(val[type=="actual"]),
+         ACTUAL = val[type == 'actual'],
+         PREDICT = val[type == 'train']) %>% 
+  dplyr::ungroup() %>% 
+  as.data.frame
+
+mast_df <- arrange(mast_df, type, val, OBS)
+order_x <- mast_df$OBS
+order_x <- factor(order_x, levels = unique(order_x))
+
+lbl <- paste(mast_df$employeeID, round(mast_df$MAPE,2), sep = "\n")
+
+### Residual Plot
+ggplot(mast_df)+
+  geom_line(aes(group = OBS, x = as.factor(order_x), y = val), alpha = 0.2, size = 1.1) +
+  geom_point(aes(x = as.factor(order_x), y = val, col = type, label = lbl), size = 2.5) +
+  ggtitle("Train Resdiual Plot - RF") +
+  theme(plot.title = element_text(hjust = 0.5, face = 'bold'),
+        axis.text.x=element_blank(),
+        axis.ticks.x = element_blank())+
+  scale_y_continuous(labels=function(x) format(x, big.mark = ",", scientific = FALSE)) +
+  ylab("Current Salary") +
+  xlab("Index")
+
+```
+
+\textbf{Accuracy on Train Data:}  
+\(R^2\): `r round(postResample(exp(predict(m1_rf, train_df)), train_df$currentsalary)[2], 2)`  
+\(MSE\): `r round(postResample(exp(predict(m1_rf, train_df)), train_df$currentsalary)[3], 2)`  
+
+### Random Forest Validation
+```{r echo=FALSE, out.width = '70%', fig.align = 'center'}
+# 100/nrow(test_df) * sum(abs((test_df$currentsalary - exp(predict(m1_rf, test_df)))/test_df$currentsalary))
+# 1/nrow(test_df) * sum(abs((test_df$currentsalary-exp(predict(m1_rf, test_df)))))
+
+rf_test_pred <- predict(m1_rf, val_df)
+# postResample(rf_test_pred, val_df$currentsalary)
+
+actual_df <- data.frame(val = val_df$currentsalary, type = "actual", index = val_df$index)
+pred_df <- data.frame(val = exp(predict(m1_rf, val_df)), type = "validation", index = "0")
+mast_df <- rbind(actual_df, pred_df)
+mast_df$OBS <- rep(seq(1,nrow(actual_df)), 2)
+mast_df <- merge(mast_df,nb, by = c('index'), all.x = TRUE)
+mast_df <- mast_df %>% 
+  group_by(OBS) %>% 
+  mutate(MAPE = 100*(abs(val[type == "actual"]-val[type=="validation"]))/(val[type=="actual"]),
+         ACTUAL = val[type == 'actual'],
+         PREDICT = val[type == 'validation']) %>% 
+  dplyr::ungroup() %>% 
+  as.data.frame
+
+mast_df <- arrange(mast_df, type, val, OBS)
+order_x <- mast_df$OBS
+order_x <- factor(order_x, levels = unique(order_x))
+
+lbl <- paste(mast_df$employeeID, round(mast_df$MAPE,2), sep = "\n")
+
+### Residual Plot
+ggplot(mast_df)+
+  geom_line(aes(group = OBS, x = as.factor(order_x), y = val), alpha = 0.2, size = 1.1) +
+  geom_point(aes(x = as.factor(order_x), y = val, col = type, label = lbl), size = 2.5) +
+  ggtitle("Validation Resdiual Plot - RF") +
+  theme(plot.title = element_text(hjust = 0.5, face = 'bold'),
+        axis.text.x=element_blank(),
+        axis.ticks.x = element_blank())+
+  scale_y_continuous(labels=function(x) format(x, big.mark = ",", scientific = FALSE)) +
+  ylab("Current Salary") +
+  xlab("Index")
+
+```
+
+\textbf{Accuracy on Validation Data:}  
+\(R^2\): `r round(postResample(exp(predict(m1_rf, val_df)), val_df$currentsalary)[2], 2)`  
+\(MSE\): `r round(postResample(exp(predict(m1_rf, val_df)), val_df$currentsalary)[3], 2)`
+
 ### Random Forest Test
-```{r eval=FALSE, include=FALSE}
-100/nrow(test_df) * sum(abs((test_df$currentsalary - exp(predict(m1_rf, test_df)))/test_df$currentsalary))
-1/nrow(test_df) * sum(abs((test_df$currentsalary-exp(predict(m1_rf, test_df)))))
+```{r echo=FALSE, out.width = '70%', fig.align = 'center'}
+# 100/nrow(test_df) * sum(abs((test_df$currentsalary - exp(predict(m1_rf, test_df)))/test_df$currentsalary))
+# 1/nrow(test_df) * sum(abs((test_df$currentsalary-exp(predict(m1_rf, test_df)))))
 
 rf_test_pred <- predict(m1_rf, test_df)
-postResample(rf_test_pred, test_df$currentsalary)
+# postResample(rf_test_pred, test_df$currentsalary)
 
 actual_df <- data.frame(val = test_df$currentsalary, type = "actual", index = test_df$index)
 pred_df <- data.frame(val = exp(predict(m1_rf, test_df)), type = "test", index = "0")
@@ -802,7 +1010,27 @@ ggplot(mast_df)+
 
 ```
 
-## XGBoost
+\textbf{Accuracy on Test Data:}  
+\(R^2\): `r round(postResample(exp(predict(m1_rf, test_df)), test_df$currentsalary)[2], 2)`  
+\(MSE\): `r round(postResample(exp(predict(m1_rf, test_df)), test_df$currentsalary)[3], 2)`
+
+# Summary & Interpretation
+
+\begin{table}[h]
+\centering
+\begin{tabular}{c|c|c}
+\hline
+\(R^2\) & OLS & RF  \\
+\hline
+Train & 0.71 & 0.91 \\
+Validation &  0.65 & 0.66  \\ 
+Test &  0.78 & 0.78 \\
+\hline
+\end{tabular}
+\end{table}
+
+From these results we see that both models perform similarly with the data provided.  Both algorithms perform similarly between the different datasets excluding the training data.  What I can interpret from this is that the algorithms are being consistent between the datasets and there is minimal bias occuring.  To be able to increase our accuracy we will need more data or more predictors to estimate the variance.
+
 ```{r eval=FALSE, include=FALSE}
 ctrl <- trainControl(method = "repeatedcv", number = 10, repeats = 10)
 
@@ -828,7 +1056,6 @@ plot(val_df$currentsalary, rf_pred)
 
 ```
 
-### XGBoost Test
 ```{r eval=FALSE, include=FALSE}
 100/nrow(test_df) * sum(abs((test_df$currentsalary - exp(predict(m1_xgb, test_df)))/test_df$currentsalary))
 1/nrow(test_df) * sum(abs((test_df$currentsalary-exp(predict(m1_xgb, test_df)))))
